@@ -1,22 +1,32 @@
 /*
  * (c) 2008-2011 Daniel Halperin <dhalperi@cs.washington.edu>
  */
-#include "iwl_connector.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <linux/socket.h>
 #include <linux/netlink.h>
+#include <linux/connector.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include "connector_users.h"
+#include "iwl_connector.h"
+
+
+#define CN_IDX_IWLAGN   (CN_NETLINK_USERS + 0xf)
+#define CN_VAL_IWLAGN   0x1
+
 
 #define MAX_PAYLOAD 2048
-#define SLOW_MSG_CNT 1
+#define SLOW_MSG_CNT 100
 
 int sock_fd = -1;							// the socket
 FILE* out = NULL;
+
+FILE* time_out = NULL;
 
 void check_usage(int argc, char** argv);
 
@@ -36,12 +46,15 @@ int main(int argc, char** argv)
 	int ret;
 	unsigned short l, l2;
 	int count = 0;
+	struct timeval tv;
+	unsigned long long current_time;
 
 	/* Make sure usage is correct */
 	check_usage(argc, argv);
 
 	/* Open and check log file */
 	out = open_file(argv[1], "w");
+	time_out=open_file(strcat(argv[1],"-time.txt"), "w");
 
 	/* Setup the socket */
 	sock_fd = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
@@ -52,11 +65,11 @@ int main(int argc, char** argv)
 	memset(&proc_addr, 0, sizeof(struct sockaddr_nl));
 	proc_addr.nl_family = AF_NETLINK;
 	proc_addr.nl_pid = getpid();			// this process' PID
-	proc_addr.nl_groups = CN_IDX_IWLAGN;
+	proc_addr.nl_groups = (CN_NETLINK_USERS + 0xf);
 	memset(&kern_addr, 0, sizeof(struct sockaddr_nl));
 	kern_addr.nl_family = AF_NETLINK;
 	kern_addr.nl_pid = 0;					// kernel
-	kern_addr.nl_groups = CN_IDX_IWLAGN;
+	kern_addr.nl_groups = (CN_NETLINK_USERS + 0xf);
 
 	/* Now bind the socket */
 	if (bind(sock_fd, (struct sockaddr *)&proc_addr, sizeof(struct sockaddr_nl)) == -1)
@@ -87,13 +100,17 @@ int main(int argc, char** argv)
 		/* Log the data to file */
 		l = (unsigned short) cmsg->len;
 		l2 = htons(l);
+		gettimeofday(&tv, NULL);
+		current_time=(unsigned long long)tv.tv_sec*1000+tv.tv_usec/1000;
+		fprintf(time_out,"%lld\n", current_time);
 		fwrite(&l2, 1, sizeof(unsigned short), out);
 		ret = fwrite(cmsg->data, 1, l, out);
-		if (count % 100 == 0)
+		if (count % 150 == 0)
 			printf("wrote %d bytes [msgcnt=%u]\n", ret, count);
 		++count;
 		if (ret != l)
 			exit_program_err(1, "fwrite");
+		fflush(stdout);
 	}
 
 	exit_program(0);
@@ -104,7 +121,7 @@ void check_usage(int argc, char** argv)
 {
 	if (argc != 2)
 	{
-		fprintf(stderr, "Usage: %s <output_file>\n", argv[0]);
+		fprintf(stderr, "Usage: log_to_file <output_file>\n");
 		exit_program(1);
 	}
 }
