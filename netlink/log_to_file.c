@@ -21,7 +21,7 @@
 
 
 #define MAX_PAYLOAD 2048
-#define SLOW_MSG_CNT 100
+#define SLOW_MSG_CNT 1000
 
 int sock_fd = -1;							// the socket
 FILE* out = NULL;
@@ -105,7 +105,7 @@ int main(int argc, char** argv)
 		fprintf(time_out,"%lld\n", current_time);
 		fwrite(&l2, 1, sizeof(unsigned short), out);
 		ret = fwrite(cmsg->data, 1, l, out);
-		if (count % 150 == 0)
+		if (count % 2000 == 0)
 			printf("wrote %d bytes [msgcnt=%u]\n", ret, count);
 		++count;
 		if (ret != l)
